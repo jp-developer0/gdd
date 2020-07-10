@@ -1,8 +1,7 @@
 USE [GD1C2020]
 GO
---Eliminar funcion
-	
 
+--Eliminar funcion
 	IF  EXISTS (SELECT TOP 1 1 FROM sys.objects WHERE 
         object_id = OBJECT_ID(N'[GDD2020].[cantCamas]')
          AND type in (N'FN', N'IF', N'TF', N'FS', N'FT'))
@@ -11,9 +10,14 @@ GO
 	Print('Funcion cantidad de camas eliminada')
 	END
 GO
+
+
+IF EXISTS ( SELECT * FROM sysobjects WHERE  id = object_id(N'GDD2020.InsertarFecha') AND OBJECTPROPERTY(id, N'IsProcedure') = 1 )
+	DROP PROCEDURE [GDD2020].InsertarFecha
+
+	GO
+
 --Creando Funciones
-
-
 CREATE FUNCTION [GDD2020].[cantCamas](@tipoDesc NVARCHAR(50))
 RETURNS INT AS 
 BEGIN
@@ -34,8 +38,12 @@ BEGIN
 END
 GO
 
+CREATE VIEW TIPO_HABITACION_VIEW
+AS
+SELECT TIPO_HABITACION_CODIGO, GDD2020.cantCamas(TIPO_HABITACION_DESC) AS CANT_CAMAS, TIPO_HABITACION_DESC
+	FROM GDD2020.TIPO_HABITACION;
 
-SET LANGUAGE Spanish
+	GO
 
 BEGIN
 
@@ -71,21 +79,13 @@ BEGIN
 		IF EXISTS (  SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[GDD2020].VENTAS_ESTADIA')  )
 	ALTER TABLE [GDD2020].[VENTAS_ESTADIAS] DROP CONSTRAINT FK_VENTAS_ESTADIA_PROVEEDOR_ID
 	
-/*	
 --Eliminar stored procedures
 	PRINT('Eliminando Stored Procedures..')
 	
-	IF EXISTS (SELECT name FROM sysobjects WHERE name = 'InsertarFecha' AND type = 'P') 
-  	DROP PROCEDURE [GDD2020].InsertarFecha
-*/
 
-
-
+--ELIMINAR VISTA
 
 -- ELIMINAR TABLAS 
-
-	IF OBJECT_ID('[GDD2020].[CIUDADES]', 'U') IS NOT NULL 
-	DROP TABLE [GDD2020].[CIUDADES]
 
 	IF OBJECT_ID('[GDD2020].[VENTAS_PASAJES]', 'U') IS NOT NULL 
 	DROP TABLE [GDD2020].[VENTAS_PASAJES]
@@ -93,12 +93,28 @@ BEGIN
 	IF OBJECT_ID('[GDD2020].[VENTAS_ESTADIAS]', 'U') IS NOT NULL 
 	DROP TABLE [GDD2020].[VENTAS_ESTADIAS]
 
+	IF OBJECT_ID('[GDD2020].[CIUDADES]', 'U') IS NOT NULL 
+	DROP TABLE [GDD2020].[CIUDADES]
+	
 	IF OBJECT_ID('[GDD2020].[Fecha]', 'U') IS NOT NULL 
 	DROP TABLE [GDD2020].[Fecha]
+
+
+
+SET LANGUAGE Spanish
 
 --CREANDO NUEVAS TABLAS
 	PRINT('Creando tablas')
 	
+
+	-- Dimension Ciudades
+	CREATE TABLE [GDD2020].[CIUDADES](
+		CIUDADES_ID BIGINT IDENTITY(1,1) PRIMARY KEY,
+		CIUDADES_NOMBRE [nvarchar](255) NOT NULL,
+	)ON [PRIMARY]
+
+	
+-- CREAMOS FECHA 
 	-- Dimensión Fecha (el mes sera nuestra granularidad minima) 
 	CREATE TABLE [GDD2020].Fecha(
 	   [DateKey] [int] NOT NULL PRIMARY KEY, /* Formato: AAAAMMDD */   
@@ -111,14 +127,7 @@ BEGIN
 	   [Anio_semestre] [nvarchar](25) NULL,/*  Semestre + año */
 	   [Nombre_Mes] [nvarchar](10) NULL, /* Enero a Diciembre */
 	)ON [PRIMARY]
-	
-	-- Dimension Ciudades
-	CREATE TABLE [GDD2020].[CIUDADES](
-		CIUDADES_ID BIGINT IDENTITY(1,1) PRIMARY KEY,
-		CIUDADES_NOMBRE [nvarchar](255) NOT NULL,
-	)ON [PRIMARY]
 
-	
 	/*  HACEMOS UNA TABLA DE HECHOS PARA LA INFORMACION DE  PASAJES Y OTRA PARA ESTADIAS...*/
 
 	-- Tabla de hechos Ventas Pasajes.
@@ -168,8 +177,11 @@ BEGIN
 		CONSTRAINT FK_VENTAS_ESTADIA_PROVEEDOR_ID FOREIGN KEY([VENTAS_PROVEEDOR_ID]) REFERENCES [GDD2020].[PROVEEDOR]([PROVEEDOR_CODIGO])
 	)ON [PRIMARY]
 
+END
 -- Stored Procedure que inserta cada una de las fechas:
+USE [GD1C2020]
 GO
+
 create procedure [GDD2020].InsertarFecha
    @CurrentDate datetime
 as
@@ -193,9 +205,10 @@ insert into [GDD2020].Fecha
       	CAST(DATEPART(year , @CurrentDate) as char(4)) + '-' + CAST(CASE WHEN DATEPART(quarter , @CurrentDate) < 3 THEN 1 ELSE 2 END AS char(2))
    )
 GO
-
 --Bucle de carga de Fechas
 --Dejamos cargadas las fechas desde 01/01/2015 al 31/12/2025
+
+
 
 declare @StartDate datetime= CONVERT(datetime,'20150101',102), @EndDate datetime =CONVERT(datetime,'20301231',102)
 while @StartDate <= @EndDate begin
@@ -210,12 +223,7 @@ INSERT INTO GDD2020.CIUDADES
 SELECT DISTINCT RUTA_AEREA_CIU_DEST
 	FROM GDD2020.RUTA_AEREA
 
-
-CREATE VIEW TIPO_HABITACION_VIEW AS
-SELECT TIPO_HABITACION_CODIGO, GDD2020.cantCamas(TIPO_HABITACION_DESC) AS CANT_CAMAS, TIPO_HABITACION_DESC
-	FROM GDD2020.TIPO_HABITACION
-
-	
+DROP VIEW [TIPO_HABITACION_VIEW]
 
 	--Tabla Ventas_Pasajes
 		
@@ -240,7 +248,7 @@ SELECT TIPO_HABITACION_CODIGO, GDD2020.cantCamas(TIPO_HABITACION_DESC) AS CANT_C
 		cp.PROVEEDOR_CODIGO, 
 		ciuOri. CIUDADES_ID,
 		ciuDest.CIUDADES_ID,
-		pa.pasaje_tipo_butaca,
+		pa.PASAJE_TIPO_BUTACA,
 		ra.RUTA_AEREA_ID,
 		avion.AVION_IDENTIFICADOR,
 		1,
@@ -271,7 +279,7 @@ SELECT TIPO_HABITACION_CODIGO, GDD2020.cantCamas(TIPO_HABITACION_DESC) AS CANT_C
 
 
 
-
+		/*
 	--Tabla Ventas_Pasajes
 
 	INSERT INTO  [GDD2020].[VENTAS_ESTADIAS](
@@ -305,3 +313,5 @@ JOIN GDD2020.COMPRA c ON f.compra_numero = c.COMPRA_NUMERO
 JOIN GDD2020.COMPRA_ESTADIA ce ON  c.COMPRA_NUMERO = ce.estadia_compra_numero
 JOIN GDD2020.CLIENTE c2 ON f.numero_cliente = c2.cliente_numero
 JOIN GDD2020.VENTA_ESTADIA ve2  on ve2.factura_nro = f.factura_nro
+
+*/
